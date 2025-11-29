@@ -1,0 +1,6 @@
+/data
+/.venv
+/malware_dataset
+__pycache__/
+.pytest_cache/
+.git_old_backup/
