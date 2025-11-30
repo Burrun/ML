@@ -20,7 +20,7 @@ from torchmalware.types import ByteBinarySample
 from torchmalware.transforms.functional import to_bytes
 
 from typing import Tuple
-
+import hashlib
 
 def writer(elem: Tuple[ByteBinarySample, int], path: str) -> None:
     sample, _ = elem
@@ -31,7 +31,26 @@ def writer(elem: Tuple[ByteBinarySample, int], path: str) -> None:
     # 원본 파일은 건들지 않고 meta만 생성
     # with open(path, "wb") as f:
     #     f.write(to_bytes(binary))
-    
+
+    # 현재 PE 파일 체크섬 계산
+    if hasattr(binary, "numpy"):
+        binary_bytes = binary.numpy().tobytes()
+    else:
+        binary_bytes = binary
+    current_hash = hashlib.sha256(binary_bytes).hexdigest()
+    # 기존 meta 파일이 있으면 불러보고 비교
+    if os.path.exists(metadata_path):
+        try:
+            old_meta = torch.load(metadata_path)
+            old_hash = old_meta.get("__file_hash__", None)
+            # hash 동일하면 skip
+            if old_hash == current_hash:
+                return
+        except:
+            pass  # meta 깨짐 → 다시 계산하게 둠
+    # metadata에 hash 포함시키기
+    metadata["__file_hash__"] = current_hash
+
     torch.save(metadata, metadata_path)
 
 
@@ -104,4 +123,9 @@ if __name__ == "__main__":
         indices = tuple(range(*[int(i) for i in args.range.split(",")]))
         dataset = Subset(dataset, indices)
 
-    saved_paths = save_dataset(dataset, get_path, num_workers = args.np, writer=writer, log=args.log)
+    
+    def skipper(idx: int, save_path: str) -> bool:
+        metadata_path = save_path + ".meta"
+        return os.path.exists(metadata_path)
+
+    saved_paths = save_dataset(dataset, get_path, num_workers = args.np, writer=writer, log=args.log, skipper=skipper)
