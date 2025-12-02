@@ -29,7 +29,7 @@
 가장 먼저 Docker 컨테이너를 실행하여 환경을 구축합니다.
 
 ```bash
-cd docker && python3 deploy.py --gpus 0 --memory 16g --cpus 8
+cd docker && python3 deploy.py --gpus 0 --memory 16g 
 ```
 
 > **참고:** 컨테이너 내부로 진입하면 프롬프트가 `[user@container /app]$` 형태로 변경됩니다.
@@ -39,15 +39,22 @@ cd docker && python3 deploy.py --gpus 0 --memory 16g --cpus 8
 ## 🔧 세션 2: 전처리 (Preprocessing)
 
 수집한 실행 파일(.exe)을 학습에 필요한 메타데이터로 변환합니다.
-
+* np는 프로세스 개수를 의미, 0.75cpu코어 수로 설정
 ```bash
 python3 src/preprocess_pe.py \
   --root-dir data/binary \
   --save-dir data/metadata \
-  --ext .exe
-```
+  --ext .exe \
+  --np 2 
+```  
 
----
+# 전처리 완료 후 timeout된 파일 제거(어쩔 수 없음 ...)
+python3 filter_timeout_files.py \
+  --csv data/train.csv \
+  --csv data/valid.csv \
+  --csv data/test.csv
+
+*복원 방법: mv data/train.csv.backup data/train.csv 
 
 ## 🎓 세션 3: 학습 (Training)
 

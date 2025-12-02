@@ -30,7 +30,7 @@ max_early_stop: 5         # Number of validation steps performed without improve
 learning_rate: 0.01
 momentum: 0.9
 weight_decay: 0.001
-batch_size: 10
+batch_size: 4 #10에서 4로 수정
 
 ### Model parameter
 data_size: 2097152        # First N bytes of a PE file as the input of MalConv (defualt: 2 million)
