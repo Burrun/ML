@@ -54,8 +54,10 @@ def move_file(src: str, dest: str):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     shutil.move(src, dest)
 
-def reorganize_dataset(csv_paths: List[str], root_dir: str = None):
+def reorganize_dataset(csv_paths: List[str]):
     """데이터셋 재구성: 필터링 -> 셔플 -> 분할 -> 이동"""
+    
+    root_dir = "data"  # 고정된 루트 디렉토리
     
     print(f"\n{'='*80}")
     print("🔄 데이터셋 재구성 시작 (필터링 + 셔플 + 분할 + 이동)")
@@ -63,7 +65,15 @@ def reorganize_dataset(csv_paths: List[str], root_dir: str = None):
 
     all_rows = []
     
-    # 1. 모든 CSV 읽기
+    # 1. CSV 백업 생성
+    print("💾 CSV 백업 생성 중...")
+    for csv_path in csv_paths:
+        if os.path.exists(csv_path):
+            backup_path = csv_path + ".backup"
+            shutil.copy2(csv_path, backup_path)
+            print(f"  ✅ {csv_path} → {backup_path}")
+    
+    # 2. 모든 CSV 읽기
     print("📖 CSV 파일 읽는 중...")
     for csv_path in csv_paths:
         if not os.path.exists(csv_path):
@@ -75,7 +85,7 @@ def reorganize_dataset(csv_paths: List[str], root_dir: str = None):
     
     print(f"  총 읽은 데이터: {len(all_rows)}개")
 
-    # 2. 유효성 검사 (필터링)
+    # 3. 유효성 검사 (필터링)
     print("🔍 유효성 검사 중 (Timeout 파일 제거)...")
     valid_rows = []
     for row in all_rows:
@@ -84,12 +94,12 @@ def reorganize_dataset(csv_paths: List[str], root_dir: str = None):
     
     print(f"  유효한 데이터: {len(valid_rows)}개 (제거됨: {len(all_rows) - len(valid_rows)}개)")
 
-    # 3. 셔플
+    # 4. 셔플
     print("🔀 데이터 셔플 중...")
     random.seed(42) # 재현성을 위해 시드 고정
     random.shuffle(valid_rows)
 
-    # 4. 분할 (6:2:2)
+    # 5. 분할 (6:2:2)
     total = len(valid_rows)
     n_train = int(total * 0.6)
     n_valid = int(total * 0.2)
@@ -103,12 +113,12 @@ def reorganize_dataset(csv_paths: List[str], root_dir: str = None):
 
     print(f"📊 분할 결과: Train({len(splits['train'])}) / Valid({len(splits['valid'])}) / Test({len(splits['test'])})")
 
-    # 5. 파일 이동 및 CSV 저장
+    # 6. 파일 이동 및 CSV 저장
     print("🚚 파일 이동 및 CSV 저장 중...")
     
     # 기본 경로 설정 (data/binary, data/metadata)
-    base_binary_dir = "data/binary"
-    base_metadata_dir = "data/metadata"
+    base_binary_dir = "binary"
+    base_metadata_dir = "metadata"
 
     for split_name, rows in splits.items():
         new_csv_path = f"data/{split_name}.csv"
@@ -119,6 +129,15 @@ def reorganize_dataset(csv_paths: List[str], root_dir: str = None):
         for row in rows:
             old_binary_path = row['path']
             old_metadata_path = row['metadata_path']
+            
+            # root_dir이 있으면 경로 결합
+            if root_dir:
+                full_old_binary_path = os.path.join(root_dir, old_binary_path)
+                full_old_metadata_path = os.path.join(root_dir, old_metadata_path)
+            else:
+                full_old_binary_path = old_binary_path
+                full_old_metadata_path = old_metadata_path
+
             filename = os.path.basename(old_binary_path)
             
             # 새 경로 설정
@@ -128,13 +147,13 @@ def reorganize_dataset(csv_paths: List[str], root_dir: str = None):
             # 파일 이동 (실제 경로가 다를 경우에만)
             # 주의: 상대 경로 처리를 위해 절대 경로로 변환하여 비교하거나, 단순히 이동 시도
             try:
-                if os.path.abspath(old_binary_path) != os.path.abspath(new_binary_path):
-                    if os.path.exists(old_binary_path):
-                        move_file(old_binary_path, new_binary_path)
+                if os.path.abspath(full_old_binary_path) != os.path.abspath(new_binary_path):
+                    if os.path.exists(full_old_binary_path):
+                        move_file(full_old_binary_path, new_binary_path)
                 
-                if os.path.abspath(old_metadata_path) != os.path.abspath(new_metadata_path):
-                    if os.path.exists(old_metadata_path):
-                        move_file(old_metadata_path, new_metadata_path)
+                if os.path.abspath(full_old_metadata_path) != os.path.abspath(new_metadata_path):
+                    if os.path.exists(full_old_metadata_path):
+                        move_file(full_old_metadata_path, new_metadata_path)
             except Exception as e:
                 print(f"    ❌ 파일 이동 실패: {filename} - {e}")
                 continue # 이동 실패 시 해당 항목 제외? 아니면 경고만? 일단 진행
@@ -168,12 +187,7 @@ if __name__ == "__main__":
         required=True,
         help="입력 CSV 파일 경로 (여러 개 지정 가능)"
     )
-    parser.add_argument(
-        "--root-dir",
-        type=str,
-        default=None,
-        help="메타데이터 파일의 루트 디렉토리"
-    )
+
     parser.add_argument(
         "--reorganize",
         action='store_true',
@@ -183,7 +197,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.reorganize:
-        reorganize_dataset(args.csv, args.root_dir)
+        reorganize_dataset(args.csv)
     else:
         print("⚠️ --reorganize 옵션을 사용해주세요.")
 

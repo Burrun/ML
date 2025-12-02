@@ -293,7 +293,7 @@ if __name__ == "__main__":
     embed_num += 1
 
     transform = [
-        DropMetadata(["binary_path", "exe_section", "header_size"]),
+        DropMetadata(["binary_path", "exe_section", "header_size", "__file_hash__"]),
         Trim(length=data_size),
     ]
     if conf["header"] == "remove":

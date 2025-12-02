@@ -99,3 +99,9 @@ python3 src/certify_exp-repeat_forward.py \
   --repeat-conf configs/repeat-forward-exp/sample_config.yaml \
   --certify-conf configs/certify-exp/sample_config.yaml
 ```
+
+
+-------------------------------------------
+도커 설치 
+pip install psutil
+python3 run_pipeline_auto.py
