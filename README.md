@@ -102,6 +102,7 @@ python3 src/certify_exp-repeat_forward.py \
 
 
 -------------------------------------------
-도커 설치 
+도커 설치 / git 설치 / 
+git clone https://github.com/Burrun/ML.git
 pip install psutil
 python3 run_pipeline_auto.py
