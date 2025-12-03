@@ -7,7 +7,7 @@ ckpt: '/app/outputs/models/checkpoint/malconv-insn_deletion_99.5_sd_42.ckpt'
 ### Location of data path (leave as null to use default validation set)
 data:
   csv: '/app/data/test.csv'
-  path: '/app/data/binaries'
+  path: '/app/data'
 
 save_dir: '/app/outputs/repeat-forward-exp'    # Location to save the computed table
 
@@ -16,6 +16,6 @@ save_dir: '/app/outputs/repeat-forward-exp'    # Location to save the computed t
 use_gpu: True                  # If use gpu to compute
 num_samples: 50                # Number of samples
 sample_seed: 42                # Seed to draw sample
-verbose: 0                     # Verbosity of the process
+verbose: 1                     # Verbosity of the process
 batch_size: 16                 # Batch size when computing
 num_workers: 12

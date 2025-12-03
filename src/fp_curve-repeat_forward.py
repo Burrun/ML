@@ -27,6 +27,7 @@ if __name__ == "__main__":
                     action="store_true",
                     help='If dry-run is enabled (print out sample fp_curve, instead of saving)')
     parser.add_argument("--num-pred", type=int, default=None, help="Number of samples to use for prediction")
+    parser.add_argument("--target-fpr", type=float, default=0.01, help="Target False Positive Rate to find threshold for (default: 0.01)")
     args = parser.parse_args()
 
     repeat_conf_path = args.repeat_conf
@@ -64,6 +65,28 @@ if __name__ == "__main__":
         num_workers=0,
     )
     ckpt["fp_curve"] = fp_curve
+
+    # Find threshold for target FPR
+    target_fpr = args.target_fpr
+    thresholds = fp_curve[0].flatten()
+    fp_ratios = fp_curve[1].flatten()
+    
+    # Find the smallest threshold where FPR <= target_fpr
+    # Thresholds are sorted ascendingly (0 to 1)
+    valid_indices = torch.where(fp_ratios <= target_fpr)[0]
+    
+    if len(valid_indices) > 0:
+        # The first index is the smallest threshold satisfying the condition
+        idx = valid_indices[0]
+        best_thresh = thresholds[idx].item()
+        best_fpr = fp_ratios[idx].item()
+        
+        ckpt["certified_threshold"] = best_thresh
+        ckpt["target_fpr"] = target_fpr
+        print(f"Found threshold for {target_fpr*100}% FPR: {best_thresh:.6f} (Actual FPR: {best_fpr:.6f})")
+    else:
+        print(f"Warning: No threshold found for {target_fpr*100}% FPR (min FPR: {fp_ratios.min():.6f})")
+
     if args.dry_run:
         print("Dry run result")
         print("\tThresh:", fp_curve[0], fp_curve[1])
