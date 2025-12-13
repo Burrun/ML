@@ -215,6 +215,19 @@ if __name__ == "__main__":
         help='사용할 디바이스 (cuda:0, cpu 등, 기본값: 자동 감지)'
     )
     
+    parser.add_argument(
+        '--test-csv',
+        type=str,
+        default=None,
+        help='테스트 데이터 CSV 파일 경로 (기본값: 체크포인트 설정 사용)'
+    )
+    parser.add_argument(
+        '--data-dir',
+        type=str,
+        default=None,
+        help='데이터 루트 디렉토리 (CSV 내의 상대 경로가 이 디렉토리 기준일 때 사용)'
+    )
+    
     args = parser.parse_args()
     
     # 체크포인트 로드
@@ -271,12 +284,33 @@ if __name__ == "__main__":
     
     # 테스트 데이터셋 로드
     print("\n테스트 데이터셋 로딩 중...")
-    test_data = conf.get('test_data')
+    
+    if args.test_csv:
+        test_data = args.test_csv
+        print(f"  사용자 지정 테스트 데이터: {test_data}")
+    else:
+        test_data = conf.get('test_data')
+        print(f"  설정 파일 테스트 데이터: {test_data}")
+        
     if not test_data:
-        print("❌ 오류: 설정 파일에 test_data가 정의되지 않았습니다.")
+        print("❌ 오류: 테스트 데이터 경로가 지정되지 않았습니다.")
         exit(1)
     
-    test_dataset = make_dataset(test_data, transform)
+    if not os.path.exists(test_data):
+        print(f"❌ 오류: 테스트 데이터 파일을 찾을 수 없습니다: {test_data}")
+        exit(1)
+    
+    # data_dir 설정
+    data_root = args.data_dir if args.data_dir else os.path.dirname(test_data)
+    
+    # make_dataset에 전달할 데이터 구조 생성
+    if args.data_dir:
+        # data_dir이 명시된 경우, CSV 경로와 데이터 루트를 분리해서 전달
+        dataset_config = {"csv": test_data, "path": args.data_dir}
+        test_dataset = make_dataset(dataset_config, transform)
+    else:
+        # 기존 방식
+        test_dataset = make_dataset(test_data, transform)
     test_file_paths = [path for path, cls in test_dataset.samples]
     
     print(f"✓ 테스트 데이터셋 로드 완료")

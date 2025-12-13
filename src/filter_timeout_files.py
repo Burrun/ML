@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """
-CSV 파일에서 insn_addr이 비어있는 파일(timeout된 파일)을 제거하고,
-데이터셋을 6:2:2 비율로 재분할하여 파일을 이동시키는 스크립트
+CSV 파일에서 insn_addr이 비어있는 파일(timeout된 파일)을 제거하는 스크립트
 
 사용법:
-    python3 src/filter_timeout_files.py --csv data/train.csv --csv data/valid.csv --csv data/test.csv --reorganize
+    # 학습 데이터셋 필터링
+    python3 src/filter_timeout_files.py --csv data/train.csv --csv data/valid.csv --csv data/test.csv
+
+    # TEST 폴더 내 특정 공격기법 필터링
+    python3 src/filter_timeout_files.py --csv TEST/ExtendDOS/test.csv
+    python3 src/filter_timeout_files.py --csv TEST/Header/test.csv
+    python3 src/filter_timeout_files.py --csv TEST/Kreuk/test.csv
+    python3 src/filter_timeout_files.py --csv TEST/Padding/test.csv
+    python3 src/filter_timeout_files.py --csv TEST/Slack/test.csv
+
+    # TEST 폴더 내 모든 공격기법 한번에 필터링
+    python3 src/filter_timeout_files.py --csv TEST/ExtendDOS/test.csv --csv TEST/Header/test.csv --csv TEST/Kreuk/test.csv --csv TEST/Padding/test.csv --csv TEST/Slack/test.csv
 """
 
 import argparse
@@ -18,35 +28,36 @@ from typing import List, Dict
 
 def check_metadata_valid(metadata_path: str, root_dir: str = None) -> bool:
     """메타데이터 파일이 유효한지 확인 (insn_addr이 비어있지 않은지)"""
+    full_path = metadata_path
     if root_dir:
-        metadata_path = os.path.join(root_dir, metadata_path)
+        full_path = os.path.join(root_dir, metadata_path)
     
-    if not os.path.exists(metadata_path):
-        # print(f"  ⚠️  메타데이터 파일 없음: {metadata_path}")
+    if not os.path.exists(full_path):
+        # print(f"  ⚠️  메타데이터 파일 없음: {full_path}")
         return False
     
     try:
-        metadata = torch.load(metadata_path)
+        metadata = torch.load(full_path)
         
         # insn_addr 체크
         if 'insn_addr' not in metadata:
-            # print(f"  ⚠️  insn_addr 키 없음: {metadata_path}")
+            # print(f"  ⚠️  insn_addr 키 없음: {full_path}")
             return False
         
         insn_addr = metadata['insn_addr']
         # sparse tensor의 경우 _nnz()로 0이 아닌 요소 개수 확인
         if hasattr(insn_addr, '_nnz'):
             if insn_addr._nnz() == 0:
-                # print(f"  ❌ insn_addr 비어있음 (timeout): {metadata_path}")
+                # print(f"  ❌ insn_addr 비어있음 (timeout): {full_path}")
                 return False
         elif insn_addr.sum() == 0:
-            # print(f"  ❌ insn_addr 비어있음 (timeout): {metadata_path}")
+            # print(f"  ❌ insn_addr 비어있음 (timeout): {full_path}")
             return False
         
         return True
     
     except Exception as e:
-        print(f"  ⚠️  메타데이터 로드 실패: {metadata_path} - {e}")
+        print(f"  ⚠️  메타데이터 로드 실패: {full_path} - {e}")
         return False
 
 def move_file(src: str, dest: str):
@@ -54,131 +65,72 @@ def move_file(src: str, dest: str):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     shutil.move(src, dest)
 
-def reorganize_dataset(csv_paths: List[str]):
-    """데이터셋 재구성: 필터링 -> 셔플 -> 분할 -> 이동"""
-    
-    root_dir = "data"  # 고정된 루트 디렉토리
+def filter_timeout_files(csv_paths: List[str], root_dir: str = None):
+    """CSV에서 timeout된 파일 제거 및 새 CSV 저장"""
     
     print(f"\n{'='*80}")
-    print("🔄 데이터셋 재구성 시작 (필터링 + 셔플 + 분할 + 이동)")
+    print("🔍 CSV 필터링 시작 (Timeout 파일 제거)")
     print(f"{'='*80}")
-
-    all_rows = []
     
-    # 1. CSV 백업 생성
-    print("💾 CSV 백업 생성 중...")
-    for csv_path in csv_paths:
-        if os.path.exists(csv_path):
-            backup_path = csv_path + ".backup"
-            shutil.copy2(csv_path, backup_path)
-            print(f"  ✅ {csv_path} → {backup_path}")
-    
-    # 2. 모든 CSV 읽기
-    print("📖 CSV 파일 읽는 중...")
     for csv_path in csv_paths:
         if not os.path.exists(csv_path):
+            print(f"⚠️  CSV 파일 없음: {csv_path}")
             continue
+        
+        # CSV 백업 생성
+        backup_path = csv_path + ".backup"
+        shutil.copy2(csv_path, backup_path)
+        print(f"💾 백업 생성: {csv_path} → {backup_path}")
+        
+        # CSV 읽기
+        rows = []
         with open(csv_path, 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                all_rows.append(row)
-    
-    print(f"  총 읽은 데이터: {len(all_rows)}개")
-
-    # 3. 유효성 검사 (필터링)
-    print("🔍 유효성 검사 중 (Timeout 파일 제거)...")
-    valid_rows = []
-    for row in all_rows:
-        if check_metadata_valid(row['metadata_path'], root_dir):
-            valid_rows.append(row)
-    
-    print(f"  유효한 데이터: {len(valid_rows)}개 (제거됨: {len(all_rows) - len(valid_rows)}개)")
-
-    # 4. 셔플
-    print("🔀 데이터 셔플 중...")
-    random.seed(42) # 재현성을 위해 시드 고정
-    random.shuffle(valid_rows)
-
-    # 5. 분할 (6:2:2)
-    total = len(valid_rows)
-    n_train = int(total * 0.6)
-    n_valid = int(total * 0.2)
-    n_test = total - n_train - n_valid
-
-    splits = {
-        'train': valid_rows[:n_train],
-        'valid': valid_rows[n_train:n_train+n_valid],
-        'test': valid_rows[n_train+n_valid:]
-    }
-
-    print(f"📊 분할 결과: Train({len(splits['train'])}) / Valid({len(splits['valid'])}) / Test({len(splits['test'])})")
-
-    # 6. 파일 이동 및 CSV 저장
-    print("🚚 파일 이동 및 CSV 저장 중...")
-    
-    # 기본 경로 설정 (data/binary, data/metadata)
-    base_binary_dir = "binary"
-    base_metadata_dir = "metadata"
-
-    for split_name, rows in splits.items():
-        new_csv_path = f"data/{split_name}.csv"
-        new_rows = []
+                rows.append(row)
         
-        print(f"  Processing {split_name} set...")
+        total_count = len(rows)
+        print(f"📖 읽은 데이터: {total_count}개")
         
+        # 유효성 검사
+        valid_rows = []
+        
+        # root_dir 자동 감지 (지정되지 않은 경우)
+        current_root_dir = root_dir
+        if current_root_dir is None and len(rows) > 0:
+            # 첫 번째 항목으로 테스트
+            first_meta = rows[0]['metadata_path']
+            if not os.path.exists(first_meta):
+                # CSV 파일이 있는 디렉토리를 root로 시도
+                csv_dir = os.path.dirname(csv_path)
+                if os.path.exists(os.path.join(csv_dir, first_meta)):
+                    current_root_dir = csv_dir
+                    print(f"ℹ️  Root directory 자동 감지: {current_root_dir}")
+
         for row in rows:
-            old_binary_path = row['path']
-            old_metadata_path = row['metadata_path']
-            
-            # root_dir이 있으면 경로 결합
-            if root_dir:
-                full_old_binary_path = os.path.join(root_dir, old_binary_path)
-                full_old_metadata_path = os.path.join(root_dir, old_metadata_path)
-            else:
-                full_old_binary_path = old_binary_path
-                full_old_metadata_path = old_metadata_path
-
-            filename = os.path.basename(old_binary_path)
-            
-            # 새 경로 설정
-            new_binary_path = os.path.join(base_binary_dir, split_name, filename)
-            new_metadata_path = os.path.join(base_metadata_dir, split_name, filename + ".meta")
-            
-            # 파일 이동 (실제 경로가 다를 경우에만)
-            # 주의: 상대 경로 처리를 위해 절대 경로로 변환하여 비교하거나, 단순히 이동 시도
-            try:
-                if os.path.abspath(full_old_binary_path) != os.path.abspath(new_binary_path):
-                    if os.path.exists(full_old_binary_path):
-                        move_file(full_old_binary_path, new_binary_path)
-                
-                if os.path.abspath(full_old_metadata_path) != os.path.abspath(new_metadata_path):
-                    if os.path.exists(full_old_metadata_path):
-                        move_file(full_old_metadata_path, new_metadata_path)
-            except Exception as e:
-                print(f"    ❌ 파일 이동 실패: {filename} - {e}")
-                continue # 이동 실패 시 해당 항목 제외? 아니면 경고만? 일단 진행
-
-            # CSV용 경로 업데이트 (상대 경로 유지)
-            new_row = row.copy()
-            new_row['path'] = new_binary_path
-            new_row['metadata_path'] = new_metadata_path
-            new_rows.append(new_row)
-
-        # CSV 저장
-        if new_rows:
-            with open(new_csv_path, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['path', 'metadata_path', 'target', 'class'])
-                writer.writeheader()
-                writer.writerows(new_rows)
-            print(f"    ✅ {new_csv_path} 저장 완료")
-
-    print(f"\n{'='*80}")
-    print("✅ 모든 작업 완료!")
+            if check_metadata_valid(row['metadata_path'], current_root_dir):
+                valid_rows.append(row)
+        
+        removed_count = total_count - len(valid_rows)
+        print(f"✅ 유효한 데이터: {len(valid_rows)}개")
+        print(f"❌ 제거된 데이터 (Timeout): {removed_count}개")
+        
+        # 새 CSV 저장
+        with open(csv_path, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['path', 'metadata_path', 'target', 'class'])
+            writer.writeheader()
+            writer.writerows(valid_rows)
+        
+        print(f"💾 저장 완료: {csv_path}")
+        print()
+    
+    print(f"{'='*80}")
+    print("✅ 모든 CSV 필터링 완료!")
     print(f"{'='*80}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="CSV에서 insn_addr이 비어있는 파일 제거 및 데이터셋 재구성"
+        description="CSV에서 insn_addr이 비어있는 파일 제거"
     )
     parser.add_argument(
         "--csv",
@@ -187,17 +139,14 @@ if __name__ == "__main__":
         required=True,
         help="입력 CSV 파일 경로 (여러 개 지정 가능)"
     )
-
+    
     parser.add_argument(
-        "--reorganize",
-        action='store_true',
-        help="데이터셋 재구성 (셔플, 분할, 파일 이동) 수행"
+        "--root-dir",
+        type=str,
+        default=None,
+        help="메타데이터 파일의 루트 디렉토리 (선택사항)"
     )
     
     args = parser.parse_args()
     
-    if args.reorganize:
-        reorganize_dataset(args.csv)
-    else:
-        print("⚠️ --reorganize 옵션을 사용해주세요.")
-
+    filter_timeout_files(args.csv, args.root_dir)

@@ -17,7 +17,7 @@ pred_dir: '/app/outputs/models/pred'
 checkpoint_dir: '/app/outputs/models/checkpoint'
 
 ### Training parameter
-seed: 42
+seed: 123
 use_gpu: True
 cpu_threads: null         # Number of CPU threads to use, null to use maximum number
 num_workers: null         # Number of cores to use for data loader! 

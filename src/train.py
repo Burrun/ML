@@ -216,16 +216,23 @@ if __name__ == "__main__":
     # Modified from https://github.com/Alexander-H-Liu/MalConv-Pytorch/blob/master/train.py
     # Load config file for experiment
     parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to configuration file")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument(
-        "--config", type=str, required=True, help="The path to configuration file."
-    )
-    parser.add_argument(
-        "--debug", required=False, action="store_true", help="If debug is enabled."
-    )
+    "--data_dir", type=str, required=False, help="Root directory of dataset (contains binary/ and metadata/ subfolders)."
+)
     args = parser.parse_args()
 
     debug = args.debug
     conf = yaml.load(open(args.config, "r"), Loader=Loader)
+
+    # Override data paths if --data_dir is provided
+    if args.data_dir:
+        base = args.data_dir.rstrip('/')
+        conf["train_data"] = {"path": base, "csv": os.path.join(base, "train.csv")}
+        conf["valid_data"] = {"path": base, "csv": os.path.join(base, "valid.csv")}
+        conf["test_data"] = {"path": base, "csv": os.path.join(base, "test.csv")}
+
 
     # Set seed
     seed = conf["seed"]

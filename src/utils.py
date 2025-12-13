@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import os
 
 import torch
 from pathos.pools import ProcessPool, SerialPool
@@ -21,8 +22,18 @@ from torchmalware.transforms import (
 
 def make_dataset(data, transform=None):
     extensions = (".bytes", ".dll", ".exe", "")
-    csv_path = data.get("csv", None)
-    data_path = data["path"]
+    
+    if isinstance(data, str):
+        if data.endswith(".csv"):
+            csv_path = data
+            data_path = "."
+        else:
+            csv_path = None
+            data_path = data
+    else:
+        csv_path = data.get("csv", None)
+        data_path = data["path"]
+
     if csv_path is not None:
         dataset = CSVDataset(
             csv_path=csv_path,

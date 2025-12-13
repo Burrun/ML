@@ -22,6 +22,16 @@ from torchmalware.transforms.functional import to_bytes
 from typing import Tuple
 import hashlib
 
+def _has_insn_addr_data(insn_addr) -> bool:
+    """Return True when insn_addr tensor actually contains entries."""
+    try:
+        if hasattr(insn_addr, "_nnz"):
+            return insn_addr._nnz() > 0
+        return insn_addr.sum() != 0
+    except Exception:
+        return False
+
+
 def writer(elem: Tuple[ByteBinarySample, int], path: str) -> None:
     sample, _ = elem
     binary, metadata = sample
@@ -43,8 +53,9 @@ def writer(elem: Tuple[ByteBinarySample, int], path: str) -> None:
         try:
             old_meta = torch.load(metadata_path)
             old_hash = old_meta.get("__file_hash__", None)
-            # hash 동일하면 skip
-            if old_hash == current_hash:
+            old_insn_addr = old_meta.get("insn_addr", None)
+            # hash 동일하고 insn_addr 유효하면 skip
+            if old_hash == current_hash and _has_insn_addr_data(old_insn_addr):
                 return
         except:
             pass  # meta 깨짐 → 다시 계산하게 둠
@@ -125,7 +136,78 @@ if __name__ == "__main__":
 
     
     def skipper(idx: int, save_path: str) -> bool:
+        """메타데이터 파일이 존재하고 유효한 경우에만 skip (timeout된 파일은 재시도)"""
         metadata_path = save_path + ".meta"
-        return os.path.exists(metadata_path)
+        
+        # 파일이 없으면 처리 필요
+        if not os.path.exists(metadata_path):
+            return False
+        
+        # 파일이 있으면 내용 확인
+        try:
+            metadata = torch.load(metadata_path)
+            
+            # insn_addr 체크
+            if 'insn_addr' not in metadata:
+                print(f"🔄 재시도 (insn_addr 키 없음): {metadata_path}")
+                return False
+            
+            insn_addr = metadata['insn_addr']
+            if not _has_insn_addr_data(insn_addr):
+                print(f"🔄 재시도 (insn_addr 비어있음/timeout): {metadata_path}")
+                return False
+            
+            # 유효한 메타데이터면 skip
+            return True
+        
+        except Exception as e:
+            print(f"🔄 재시도 (메타데이터 로드 실패): {metadata_path} - {e}")
+            return False
 
-    saved_paths = save_dataset(dataset, get_path, num_workers = args.np, writer=writer, log=args.log, skipper=skipper)
+    # Step 1: 먼저 모든 파일 스캔하여 skip 여부 결정
+    print("=" * 50)
+    print("📋 Step 1: Skip 검사 중...")
+    print("=" * 50)
+    
+    total_files = len(dataset)
+    indices_to_process = []
+    skipped_count = 0
+    
+    for idx in range(total_files):
+        save_path = get_path(idx)
+        if skipper(idx, save_path):
+            skipped_count += 1
+        else:
+            indices_to_process.append(idx)
+        
+        if (idx + 1) % 500 == 0:
+            print(f"  검사 진행: {idx + 1}/{total_files} (skip: {skipped_count})")
+    
+    print(f"\n📊 검사 완료:")
+    print(f"  - 총 파일: {total_files}")
+    print(f"  - Skip: {skipped_count}")
+    print(f"  - 처리 필요: {len(indices_to_process)}")
+    
+    if len(indices_to_process) == 0:
+        print("\n✅ 모든 파일이 이미 처리되어 있습니다!")
+    else:
+        # Step 2: 처리가 필요한 파일만 Subset으로 만들어 처리
+        print("\n" + "=" * 50)
+        print(f"🔧 Step 2: {len(indices_to_process)}개 파일 처리 중...")
+        print("=" * 50)
+        
+        dataset_to_process = Subset(dataset if not isinstance(dataset, Subset) else dataset.dataset, indices_to_process)
+        
+        def get_path_subset(idx: int) -> str:
+            actual_idx = indices_to_process[idx]
+            if isinstance(dataset, Subset):
+                actual_idx = dataset.indices[actual_idx]
+                path = dataset.dataset.samples[actual_idx][0]
+            else:
+                path = dataset.samples[actual_idx][0]
+            return os.path.abspath(path).replace(root_dir, save_dir)
+        
+        saved_paths = save_dataset(dataset_to_process, get_path_subset, num_workers=args.np, writer=writer, log=args.log)
+        
+        print(f"\n✅ 처리 완료: {len(saved_paths)}개 파일")
+

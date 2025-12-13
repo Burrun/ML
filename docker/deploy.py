@@ -46,7 +46,9 @@ def main(args):
     exe_dirs = ["src"]
     data_dirs = ["data"]
     output_dirs = ["configs", "outputs"]
-    dirs = exe_dirs + data_dirs + output_dirs
+    # 공격기법 디렉토리들도 마운트
+    attack_dirs = ["TEST"]
+    dirs = exe_dirs + data_dirs + output_dirs + attack_dirs
     for dir in dirs:
         os.makedirs(f"{src_dir}/{dir}", exist_ok=True)
         volume_mappings += ['-v', f"{src_dir}/{dir}:/app/{dir}:z"]

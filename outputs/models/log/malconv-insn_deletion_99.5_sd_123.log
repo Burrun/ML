@@ -1,0 +1,2 @@
+epoch,step,tr_loss,tr_acc,val_loss,val_acc,time,max_mem_cuda
+01, 2944, 0.145313, 0.9453, 0.074607, 0.9755, 2084.65, 1973.72
